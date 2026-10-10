@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "nrof",
+  "version": "${version}",
+  "name": "[NROF]Neoforge Runtime On Fabric",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "LGPL-3.0",
+  "icon": "assets/nrof/icon.png",
+  "environment": "*",
+  "entrypoints": {},
+  "mixins": [
+    "nrof.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
