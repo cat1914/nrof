@@ -3,19 +3,27 @@
   "id": "nrof",
   "version": "${version}",
   "name": "[NROF]Neoforge Runtime On Fabric",
-  "description": "",
+  "description": "Drives the NeoForge runtime on Fabric so NeoForge mods can run unmodified on the Fabric loader.",
   "authors": [],
   "contact": {},
   "license": "LGPL-3.0",
-  "icon": "assets/nrof/icon.png",
   "environment": "*",
-  "entrypoints": {},
+  "entrypoints": {
+    "main": [
+      "com.cat.nrof.Nrof"
+    ],
+    "client": [
+      "com.cat.nrof.NrofClient"
+    ]
+  },
   "mixins": [
     "nrof.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "fabric": "*",
     "minecraft": "${minecraft_version}"
-  }
+  },
+  "jars": [
+    { "file": "META-INF/jars/neoforge-api-21.1.249-intermediary.jar" }
+  ]
 }

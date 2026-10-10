@@ -10,12 +10,85 @@ base {
     archivesName = project.archives_base_name
 }
 
+loom {
+    runs {
+        client {
+            // Mixin debug so NROF loader-domain mixin application is observable.
+            vmArg "-Dmixin.debug.verbose=true"
+            vmArg "-Dmixin.debug.export=true"
+        }
+    }
+}
+
 repositories {
-    // Add repositories to retrieve artifacts from in here.
-    // You should only use this when depending on other mods because
-    // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-    // See https://docs.gradle.org/current/userguide/declaring_repositories.html
-    // for more information about repositories.
+    // mavenLocal is pre-seeded by scripts/sync-mavenlocal.ps1 with artifacts that
+    // only exist on maven.neoforged.net (which is intermittently unreachable here).
+    mavenLocal()
+    // CN mirror of Maven Central (covers net.neoforged:bus and other OSS deps).
+    maven {
+        name = "Aliyun"
+        url = "https://maven.aliyun.com/repository/public"
+    }
+    mavenCentral()
+    // Last resort for NeoForge-hosted artifacts missed by mavenLocal.
+    maven {
+        name = "NeoForged"
+        url = "https://maven.neoforged.net/releases"
+    }
+}
+
+// The remapped NeoForge API module (see tools/RemapOne.java). Used both as a
+// compile dependency and as a nested (JiJ) jar in the produced mod.
+def neoforgeApi = file("libs/neoforge-api-21.1.249-intermediary.jar")
+
+// Fabric's JiJ only loads nested jars that (a) are declared in the parent's
+// fabric.mod.json `jars` array AND (b) carry their own fabric.mod.json.
+// RemapOne produces the API jar without metadata, so inject it here.
+tasks.register('ensureApiMetadata') {
+    onlyIf { neoforgeApi.exists() }
+    doLast {
+        def apiVersion = (neoforgeApi.name =~ /neoforge-api-(.+)-intermediary\.jar/).with {
+            it.matches() ? it[0][1] : "0.0.0"
+        }
+        def meta = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+                schemaVersion: 1,
+                id           : "neoforge",
+                version      : apiVersion,
+                name         : "NeoForge (NROF remapped)",
+                description  : "NeoForge API module remapped to intermediary by NROF.",
+                environment  : "*",
+                custom       : ["nrof-api": true]
+        ]))
+        def zin = new java.util.zip.ZipFile(neoforgeApi)
+        try {
+            if (zin.getEntry("fabric.mod.json") != null) {
+                return // already has metadata
+            }
+            def tmp = new File(neoforgeApi.parentFile, neoforgeApi.name + ".meta.tmp")
+            def zout = new java.util.zip.ZipOutputStream(new FileOutputStream(tmp))
+            zin.entries().each { e ->
+                if (e.name != "fabric.mod.json") {
+                    zout.putNextEntry(new java.util.zip.ZipEntry(e.name))
+                    if (!e.directory) {
+                        zin.getInputStream(e).transferTo(zout)
+                    }
+                    zout.closeEntry()
+                }
+            }
+            zout.putNextEntry(new java.util.zip.ZipEntry("fabric.mod.json"))
+            zout.write(meta.getBytes("UTF-8"))
+            zout.closeEntry()
+            zout.close()
+        } finally {
+            zin.close()
+        }
+        def tmp = new File(neoforgeApi.parentFile, neoforgeApi.name + ".meta.tmp")
+        neoforgeApi.delete()
+        if (!tmp.renameTo(neoforgeApi)) {
+            throw new GradleException("failed to replace ${neoforgeApi} with metadata-injected copy")
+        }
+        logger.lifecycle("injected fabric.mod.json (id=neoforge, version={}) into {}", apiVersion, neoforgeApi.name)
+    }
 }
 
 dependencies {
@@ -26,6 +99,85 @@ dependencies {
 
     // Fabric API. This is technically optional, but you probably want it anyway.
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Tech Reborn Energy API — the de-facto Fabric community energy API.
+    // Used by NROF as the Fabric-side backing for NeoForge's FE capability:
+    // IEnergyStorage providers are adapted to team.reborn.energy.api.EnergyStorage
+    // (and vice versa), so NeoForge mods and Fabric mods see each other's energy.
+    // The artifact ships its own fabric.mod.json, so it can be JiJ'd directly.
+    // 4.0.0 is the newest version buildable with Loom 1.6.x — 4.1+ were built
+    // with Loom 1.10+ and fail the consumer-side Loom version check.
+    modImplementation "teamreborn:energy:4.0.0"
+    include "teamreborn:energy:4.0.0"
+
+    // ---- NROF: ported NeoForge runtime pieces --------------------------------
+    // The real NeoForge event bus (net.neoforged.bus).
+    // implementation -> available on the dev runtime classpath; include -> JiJ bundle.
+    implementation "net.neoforged:bus:${project.bus_version}"
+    include "net.neoforged:bus:${project.bus_version}"
+    // bus 8 transitively requires TypeResolver for its generic event class lookup;
+    // NeoForge ships it inside their launcher, on our Knot JiJ classpath it must be
+    // bundled explicitly (ClassNotFoundException net.jodah.typetools.TypeResolver).
+    implementation "net.jodah:typetools:0.6.3"
+    include "net.jodah:typetools:0.6.3"
+
+    // REAL FML runtime classes (@Mod, ModContainer, lifecycle events, DeferredWorkQueue...).
+    // Bundled so converted mods resolve net.neoforged.fml.* against genuine FML types.
+    // transitive=false: FML's full dependency tree (modlauncher, securejarhandler,
+    // earlydisplay...) is launch-context specific and not needed for the classes we
+    // exercise; anything genuinely missing shows up as a clear runtime NCDFE.
+    implementation("net.neoforged.fancymodloader:loader:${project.fml_loader_version}") { transitive = false }
+    include("net.neoforged.fancymodloader:loader:${project.fml_loader_version}") { transitive = false }
+    implementation("net.neoforged.fancymodloader:spi:${project.fml_spi_version}") { transitive = false }
+    include("net.neoforged.fancymodloader:spi:${project.fml_spi_version}") { transitive = false }
+    // IModInfo's UNBOUNDED static initializer requires the real maven-artifact types.
+    implementation "org.apache.maven:maven-artifact:3.8.5"
+    include "org.apache.maven:maven-artifact:3.8.5"
+
+    // TOML parsing for neoforge.mods.toml (same lib family FML uses).
+    implementation "com.electronwill.night-config:core:${project.nightconfig_version}"
+    implementation "com.electronwill.night-config:toml:${project.nightconfig_version}"
+    include "com.electronwill.night-config:core:${project.nightconfig_version}"
+    include "com.electronwill.night-config:toml:${project.nightconfig_version}"
+
+    // ---- NROF: the NeoForge API module ---------------------------------------
+    // The real neoforge universal jar (all net.neoforged.neoforge.* API classes),
+    // repackaged with a fabric.mod.json and remapped mojmap -> intermediary by
+    // tools/RemapOne.java so its Minecraft references resolve on Fabric's runtime.
+    // This is the API backend NeoForge mods link against — APIs that have a
+    // Fabric-API equivalent get bridged, everything else is served by the module.
+    if (neoforgeApi.exists()) {
+        modImplementation files(neoforgeApi)
+    }
+
+    // Nest the API jar via resources: loom's `include files(...)` is unreliable
+    // here, but META-INF/jars/ entries declared in the parent fabric.mod.json
+    // are read by Fabric's JiJ directly (ensureApiMetadata gives the nested jar
+    // its own fabric.mod.json, without which JiJ ignores it).
+    def nestedJars = layout.buildDirectory.dir("nested-jars")
+    tasks.register('copyNestedJars', Copy) {
+        dependsOn 'ensureApiMetadata'
+        from(neoforgeApi)
+        into(nestedJars.map { it.dir("META-INF/jars") })
+    }
+    sourceSets.main.resources.srcDir(nestedJars)
+    processResources.dependsOn 'copyNestedJars'
+    tasks.withType(Jar).configureEach { dependsOn 'copyNestedJars' }
+
+    // Bytecode remapper for the pre-build stage (mojmap -> official -> intermediary).
+    // NOTE: asm must NOT be nested (no `include`) — a second asm copy on the knot
+    // classpath collides with the one the mixin subsystem already resolved from
+    // the app classloader (LinkageError: loader constraint violation on ClassNode),
+    // which kills MixinExtras and crashes Fabric API mixins at apply time.
+    // On the runtime side knot delegates org.objectweb.asm.* to the app loader,
+    // where sponge-mixin already ships a compatible asm version.
+    implementation "org.ow2.asm:asm:${asm_version}"
+    implementation "org.ow2.asm:asm-tree:${asm_version}"
+    implementation "org.ow2.asm:asm-commons:${asm_version}"
+    implementation "net.fabricmc:mapping-io:${mappingio_version}"
+    include "net.fabricmc:mapping-io:${mappingio_version}"
+    implementation "net.fabricmc:tiny-remapper:${project.tinyremapper_version}"
+    include "net.fabricmc:tiny-remapper:${project.tinyremapper_version}"
 }
 
 processResources {

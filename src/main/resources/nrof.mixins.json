@@ -4,8 +4,10 @@
   "package": "com.cat.nrof.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "BlockCapabilityMixin"
   ],
   "client": [
+    "MainMixin"
   ],
   "injectors": {
     "defaultRequire": 1
