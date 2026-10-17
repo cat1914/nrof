@@ -1,11 +1,11 @@
 package com.cat.nrof.mixin;
 
 import com.cat.nrof.bridge.energy.EnergyBridge;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
@@ -23,9 +23,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p>The bundled {@code neoforge-api} jar is remapped to intermediary at
  * cache-build time, so its method descriptors use {@code class_xxxx} names at
- * runtime. The mixin descriptor below is written with those intermediary
- * names directly and {@code remap = false} is set so the refmap does not
- * attempt to re-translate them.</p>
+ * runtime. This mixin follows the standard flow instead of pinning names: the
+ * target descriptor below is written in the compile-time (mojmap) namespace —
+ * the same namespace the compile-time BlockCapability uses — the mixin
+ * annotation processor validates it there, and loom's remapJar rewrites the
+ * annotation value mojmap -> intermediary alongside everything else. At
+ * runtime {@code remap = true} resolves the already-intermediary string
+ * against the production namespace, which is an identity mapping.</p>
  *
  * <p>Only the energy capability is bridged in the reverse direction. Other
  * capabilities are served by the forward sweep in
@@ -33,15 +37,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * fallback for every capability would require evaluating every Fabric lookup
  * on every NeoForge query, which is expensive and rarely useful.</p>
  */
-@Mixin(value = BlockCapability.class, remap = false)
+@Mixin(BlockCapability.class)
 public abstract class BlockCapabilityMixin {
 
     @Inject(
-            method = "getCapability(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/BlockState;Lnet/minecraft/block/entity/BlockEntity;Ljava/lang/Object;)Ljava/lang/Object;",
+            method = "getCapability(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/entity/BlockEntity;Ljava/lang/Object;)Ljava/lang/Object;",
             at = @At("RETURN"),
             cancellable = true
     )
-    private void nrof$trEnergyFallback(World world, BlockPos pos, BlockState state,
+    private void nrof$trEnergyFallback(Level world, BlockPos pos, BlockState state,
                                        BlockEntity blockEntity, Object context,
                                        CallbackInfoReturnable<Object> cir) {
         if (cir.getReturnValue() != null) {

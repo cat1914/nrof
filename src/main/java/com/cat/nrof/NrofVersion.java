@@ -37,8 +37,12 @@ public final class NrofVersion {
      * v11: Forgified Fabric API dependency ids are the real Fabric API ids in
      * underscore form (fabric_api umbrella + fabric_* modules), normalized to
      * "nrof" in converted metadata.
+     * v12: TableRemapper resolves unknown Minecraft owners' hierarchy from the
+     * runtime class bytes (resource stream, never class definition) — fixes
+     * inherited interface members on MC enums/interfaces like
+     * DyeColor.getSerializedName (StringRepresentable).
      */
-    public static final String CACHE_FORMAT = "nrof-cache-v11";
+    public static final String CACHE_FORMAT = "nrof-cache-v12";
 
     private NrofVersion() {
     }

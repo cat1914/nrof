@@ -94,7 +94,12 @@ tasks.register('ensureApiMetadata') {
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    // Project-wide namespace is mojmap (the same namespace NeoForge mods are
+    // compiled against): the bundled neoforge-api jar, converted mod jars and
+    // NROF's own sources all speak mojmap at compile time; loom's remapJar and
+    // NROF's runtime TableRemapper both translate mojmap -> intermediary for
+    // the Fabric production runtime. Yarn is intentionally not used anywhere.
+    mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
     // Fabric API. This is technically optional, but you probably want it anyway.
@@ -106,9 +111,12 @@ dependencies {
     // (and vice versa), so NeoForge mods and Fabric mods see each other's energy.
     // The artifact ships its own fabric.mod.json, so it can be JiJ'd directly.
     // 4.0.0 is the newest version buildable with Loom 1.6.x — 4.1+ were built
-    // with Loom 1.10+ and fail the consumer-side Loom version check.
-    modImplementation "teamreborn:energy:4.0.0"
-    include "teamreborn:energy:4.0.0"
+    // with Loom 1.10+ and fail the consumer-side Loom version check, and 4.2.0
+    // targets MC 1.21.5+. 4.0.0 was built against MC 1.20.x and calls the
+    // Identifier(String) constructors removed in 1.21; libs/energy-4.0.0-mc1211.jar
+    // is a bytecode-patched copy (tools/PatchEnergyJar.java) routing those calls
+    // through the 1.21.1 static factories.
+    modImplementation files("libs/energy-4.0.0-mc1211.jar")
 
     // ---- NROF: ported NeoForge runtime pieces --------------------------------
     // The real NeoForge event bus (net.neoforged.bus).
@@ -158,6 +166,7 @@ dependencies {
     tasks.register('copyNestedJars', Copy) {
         dependsOn 'ensureApiMetadata'
         from(neoforgeApi)
+        from("libs/energy-4.0.0-mc1211.jar")
         into(nestedJars.map { it.dir("META-INF/jars") })
     }
     sourceSets.main.resources.srcDir(nestedJars)

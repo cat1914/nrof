@@ -4,12 +4,12 @@ import com.cat.nrof.runtime.NrofModContainer;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup;
 import net.fabricmc.fabric.api.lookup.v1.entity.EntityApiLookup;
 import net.fabricmc.fabric.api.lookup.v1.item.ItemApiLookup;
-import net.minecraft.block.Block;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.EntityCapability;
 import net.neoforged.neoforge.capabilities.IBlockCapabilityProvider;
@@ -89,7 +89,7 @@ public final class CapabilityBridge {
         for (BlockCapability<?, ?> cap : BlockCapability.getAll()) {
             Map<Block, List<IBlockCapabilityProvider<?, ?>>> providers = readProviders(cap);
             if (providers.isEmpty()) continue;
-            Identifier id = toFabricIdentifier(cap.name());
+            ResourceLocation id = cap.name();
             BlockApiLookup lookup = BlockApiLookup.get(id, (Class) cap.typeClass(), (Class) cap.contextClass());
             for (Map.Entry<Block, List<IBlockCapabilityProvider<?, ?>>> entry : providers.entrySet()) {
                 List<IBlockCapabilityProvider<?, ?>> snapshot = List.copyOf(entry.getValue());
@@ -108,7 +108,7 @@ public final class CapabilityBridge {
         for (EntityCapability<?, ?> cap : EntityCapability.getAll()) {
             Map<EntityType<?>, List<ICapabilityProvider<Entity, ?, ?>>> providers = readProviders(cap);
             if (providers.isEmpty()) continue;
-            Identifier id = toFabricIdentifier(cap.name());
+            ResourceLocation id = cap.name();
             EntityApiLookup lookup = EntityApiLookup.get(id, (Class) cap.typeClass(), (Class) cap.contextClass());
             for (Map.Entry<EntityType<?>, List<ICapabilityProvider<Entity, ?, ?>>> entry : providers.entrySet()) {
                 List<ICapabilityProvider<Entity, ?, ?>> snapshot = List.copyOf(entry.getValue());
@@ -127,7 +127,7 @@ public final class CapabilityBridge {
         for (ItemCapability<?, ?> cap : ItemCapability.getAll()) {
             Map<Item, List<ICapabilityProvider<ItemStack, ?, ?>>> providers = readProviders(cap);
             if (providers.isEmpty()) continue;
-            Identifier id = toFabricIdentifier(cap.name());
+            ResourceLocation id = cap.name();
             ItemApiLookup lookup = ItemApiLookup.get(id, (Class) cap.typeClass(), (Class) cap.contextClass());
             for (Map.Entry<Item, List<ICapabilityProvider<ItemStack, ?, ?>>> entry : providers.entrySet()) {
                 List<ICapabilityProvider<ItemStack, ?, ?>> snapshot = List.copyOf(entry.getValue());
@@ -168,21 +168,12 @@ public final class CapabilityBridge {
         return Map.of();
     }
 
-    /**
-     * NeoForge classes are remapped to intermediary at cache-build time; their
-     * {@code class_2960} (Identifier) instances are the same Java type as the
-     * Fabric one. This helper exists so the call site reads naturally.
-     */
-    private static Identifier toFabricIdentifier(Identifier id) {
-        return id;
-    }
-
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object invokeBlockProvider(IBlockCapabilityProvider p,
-                                              net.minecraft.world.World world,
-                                              net.minecraft.util.math.BlockPos pos,
-                                              net.minecraft.block.BlockState state,
-                                              net.minecraft.block.entity.BlockEntity be,
+                                              net.minecraft.world.level.Level world,
+                                              net.minecraft.core.BlockPos pos,
+                                              net.minecraft.world.level.block.state.BlockState state,
+                                              net.minecraft.world.level.block.entity.BlockEntity be,
                                               Object ctx) {
         try {
             return p.getCapability(world, pos, state, be, ctx);

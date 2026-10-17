@@ -92,6 +92,7 @@ public final class NrofLoaderHook {
             // "Not bootstrapped" when Minecraft.initBootstrapStamps hasn't run.
             ClassLoader knotClassLoader = Thread.currentThread().getContextClassLoader();
             mountClasses(knotClassLoader, ready);
+            installMixinConfigs(ready);
             BOOTSTRAP = new CachedBootstrap(List.copyOf(ready), knotClassLoader);
         } catch (Throwable t) {
             Nrof.LOGGER.error("[NROF] failed to register converted NeoForge mods into the fabric index", t);
@@ -123,6 +124,39 @@ public final class NrofLoaderHook {
             }
         } catch (Throwable t) {
             Nrof.LOGGER.error("[NROF] failed to mount cached mod classes onto the knot classloader", t);
+        }
+    }
+
+    /**
+     * Entry-point conversion for mixins: NeoForge mods ship standard
+     * SpongePowered Mixin configs, and Fabric's runtime already runs the exact
+     * same Mixin (which in turn brings ASM) via {@code MixinServiceKnot} — so
+     * instead of porting any engine, each forwarded config is handed straight
+     * to the already-running Mixin pipeline with {@code Mixins.addConfiguration}.
+     *
+     * <p>Timing is safe: this runs at {@code Main#main} HEAD, before any
+     * Minecraft target class has been loaded, and Mixin applies configurations
+     * lazily per target class. The config resources were materialized into the
+     * cache {@code classes/} dir (mounted just above), resolvable through the
+     * knot classloader.</p>
+     */
+    private static void installMixinConfigs(List<CachedNeoForgeMod> mods) {
+        int count = 0;
+        for (CachedNeoForgeMod mod : mods) {
+            for (String cfg : mod.metadata().mixins) {
+                String resource = cfg.replace('/', '_').replace('\\', '_');
+                try {
+                    org.spongepowered.asm.mixin.Mixins.addConfiguration(resource);
+                    count++;
+                    Nrof.LOGGER.info("[NROF] mixin config {} -> fabric mixin pipeline ({})", cfg, resource);
+                } catch (Throwable t) {
+                    Nrof.LOGGER.error("[NROF] failed to forward mixin config {} of mod '{}'",
+                            cfg, mod.sourceModId(), t);
+                }
+            }
+        }
+        if (count > 0) {
+            Nrof.LOGGER.info("[NROF] handed {} mixin config(s) to fabric's mixin pipeline", count);
         }
     }
 

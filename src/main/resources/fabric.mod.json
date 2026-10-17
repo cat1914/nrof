@@ -24,6 +24,7 @@
     "minecraft": "${minecraft_version}"
   },
   "jars": [
-    { "file": "META-INF/jars/neoforge-api-21.1.249-intermediary.jar" }
+    { "file": "META-INF/jars/neoforge-api-21.1.249-intermediary.jar" },
+    { "file": "META-INF/jars/energy-4.0.0-mc1211.jar" }
   ]
 }

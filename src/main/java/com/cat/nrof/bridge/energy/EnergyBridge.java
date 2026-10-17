@@ -1,6 +1,6 @@
 package com.cat.nrof.bridge.energy;
 
-import net.minecraft.util.math.Direction;
+import net.minecraft.core.Direction;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import org.slf4j.Logger;
@@ -59,10 +59,10 @@ public final class EnergyBridge {
      * return {@code null}).</p>
      */
     public static IEnergyStorage queryTrEnergy(
-            net.minecraft.world.World world,
-            net.minecraft.util.math.BlockPos pos,
-            net.minecraft.block.BlockState state,
-            net.minecraft.block.entity.BlockEntity blockEntity,
+            net.minecraft.world.level.Level world,
+            net.minecraft.core.BlockPos pos,
+            net.minecraft.world.level.block.state.BlockState state,
+            net.minecraft.world.level.block.entity.BlockEntity blockEntity,
             Direction direction) {
         EnergyStorage tr = EnergyStorage.SIDED.find(world, pos, state, blockEntity, direction);
         return tr == null ? null : new TrToNeoEnergy(tr);

@@ -19,7 +19,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Main.class)
 public class MainMixin {
 
-    @Inject(method = "main", at = @At("HEAD"))
+    // main() is an unmapped entrypoint (identical name in mojmap, intermediary
+    // and the mapping table itself), so no remapping must be attempted — the
+    // annotation processor errors out when it cannot find a mapping row.
+    @Inject(method = "main([Ljava/lang/String;)V", at = @At("HEAD"), remap = false)
     private static void nrof$earlyRegister(String[] args, CallbackInfo ci) {
         NrofLoaderHook.registerConvertedMods();
     }

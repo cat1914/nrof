@@ -46,6 +46,9 @@ public final class TableRemapper {
     /** class internal name -> super + direct interfaces (post-class-load, if available). */
     private final Map<String, String[]> hierarchy = new HashMap<>();
 
+    /** Lazily built intermediary -> mojmap class-name map (for runtime hierarchy reads). */
+    private volatile Map<String, String> reverseClasses;
+
     /** cache of: "subOwner/member+desc" -> resolved superOwner that owns the mapping. */
     private final Map<String, String> fieldOwnerCache = new HashMap<>();
     private final Map<String, String> methodOwnerCache = new HashMap<>();
@@ -231,18 +234,71 @@ public final class TableRemapper {
     private void enqueueSupers(Queue<String> q, Set<String> visited, String o) {
         String[] up = hierarchy.get(o);
         if (up == null) {
-            // No bytecode-level super info — try the class→intermediary mapping;
-            // Minecraft runtime classes we don't own also declare inherited
-            // members (e.g. Screen.minecraft). The mapping table uses mojmap
-            // owners; try known "obvious" ancestors via the exact name the
-            // mapping table knows for them. That list is seeded in seedKnownSupers().
             up = KNOWN_SUPERS.get(o);
+        }
+        if (up == null) {
+            // The owner's bytecode is neither in the remapped jar nor seeded —
+            // it is a Minecraft runtime class. Read its super/interfaces from
+            // the RUNNING game's class bytes via the classloader resource
+            // stream (never Class.forName: defining a Minecraft class during
+            // the pre-build remap would poison it before converted mixin
+            // configs reach the pipeline). Names come back in intermediary and
+            // are translated to mojmap so the BFS stays in mapping space.
+            up = loadRuntimeSupers(o);
+            if (up != null) {
+                hierarchy.put(o, up);
+            }
         }
         if (up != null) {
             for (String p : up) {
                 if (visited.add(p)) q.add(p);
             }
         }
+    }
+
+    /**
+     * Reads super/interfaces of a Minecraft class from the runtime classpath
+     * without defining it. Returns mojmap internal names, or {@code null} when
+     * the class bytes are not resolvable.
+     */
+    private String[] loadRuntimeSupers(String mojmapName) {
+        String intermediary = classes.getOrDefault(mojmapName, mojmapName);
+        if (intermediary.equals(mojmapName) && !mojmapName.startsWith("net/minecraft/")) {
+            return null; // not a Minecraft class — nothing to read
+        }
+        try (InputStream in = TableRemapper.class.getClassLoader()
+                .getResourceAsStream(intermediary + ".class")) {
+            if (in == null) {
+                return null;
+            }
+            ClassReader cr = new ClassReader(in);
+            Map<String, String> rev = reverseClasses();
+            String sup = cr.getSuperName();
+            String[] ifs = cr.getInterfaces();
+            int n = (sup == null ? 0 : 1) + ifs.length;
+            String[] out = new String[n];
+            int idx = 0;
+            if (sup != null) {
+                out[idx++] = rev.getOrDefault(sup, sup);
+            }
+            for (String itf : ifs) {
+                out[idx++] = rev.getOrDefault(itf, itf);
+            }
+            return out;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private Map<String, String> reverseClasses() {
+        Map<String, String> rev = reverseClasses;
+        if (rev == null) {
+            Map<String, String> built = new HashMap<>(classes.size() * 2);
+            classes.forEach((m, i) -> built.putIfAbsent(i, m));
+            reverseClasses = built;
+            return built;
+        }
+        return rev;
     }
 
     private class TableRemapperImpl extends Remapper {
